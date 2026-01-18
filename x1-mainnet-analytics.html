@@ -1,0 +1,133 @@
+// X1 Mainnet Connection Test
+// Run this with: node x1-test.js
+
+const https = require('https');
+
+const X1_MAINNET_RPC = 'rpc.mainnet.x1.xyz';
+
+function makeRPCCall(method, params = []) {
+    return new Promise((resolve, reject) => {
+        const data = JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: method,
+            params: params
+        });
+
+        const options = {
+            hostname: X1_MAINNET_RPC,
+            port: 443,
+            path: '/',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': data.length
+            }
+        };
+
+        const req = https.request(options, (res) => {
+            let body = '';
+
+            res.on('data', (chunk) => {
+                body += chunk;
+            });
+
+            res.on('end', () => {
+                try {
+                    resolve(JSON.parse(body));
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        });
+
+        req.on('error', (error) => {
+            reject(error);
+        });
+
+        req.write(data);
+        req.end();
+    });
+}
+
+async function testConnection() {
+    console.log('🚀 Testing X1 Mainnet Connection...\n');
+
+    try {
+        // Test 1: Get current slot
+        console.log('Test 1: Getting current slot...');
+        const slotData = await makeRPCCall('getSlot');
+        if (slotData.result) {
+            console.log('✅ Current Slot:', slotData.result.toLocaleString());
+        }
+
+        // Test 2: Get version
+        console.log('\nTest 2: Getting version info...');
+        const versionData = await makeRPCCall('getVersion');
+        if (versionData.result) {
+            console.log('✅ Solana Core Version:', versionData.result['solana-core']);
+        }
+
+        // Test 3: Get epoch info
+        console.log('\nTest 3: Getting epoch info...');
+        const epochInfo = await makeRPCCall('getEpochInfo');
+        if (epochInfo.result) {
+            console.log('✅ Current Epoch:', epochInfo.result.epoch);
+            console.log('✅ Slots in Epoch:', epochInfo.result.slotsInEpoch.toLocaleString());
+        }
+
+        console.log('\n🎉 X1 Mainnet is LIVE and responding!\n');
+        console.log('Next step: Paste your XDEX transaction signature below:');
+        
+    } catch (error) {
+        console.error('❌ Error:', error.message);
+    }
+}
+
+// If a transaction signature is provided as argument
+async function analyzeTransaction(signature) {
+    console.log(`\n🔍 Analyzing transaction: ${signature}\n`);
+    
+    try {
+        const txData = await makeRPCCall('getTransaction', [
+            signature,
+            { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 }
+        ]);
+
+        if (txData.result) {
+            console.log('✅ Transaction Found!');
+            console.log('Slot:', txData.result.slot);
+            console.log('Block Time:', new Date(txData.result.blockTime * 1000).toISOString());
+            console.log('Status:', txData.result.meta.err ? '❌ Failed' : '✅ Success');
+            
+            console.log('\n📊 Instructions in transaction:');
+            const instructions = txData.result.transaction.message.instructions;
+            instructions.forEach((inst, i) => {
+                console.log(`\nInstruction ${i + 1}:`);
+                console.log('  Program:', inst.programId || inst.program);
+                if (inst.parsed) {
+                    console.log('  Type:', inst.parsed.type);
+                    console.log('  Info:', JSON.stringify(inst.parsed.info, null, 2));
+                }
+            });
+
+            console.log('\n🎯 Perfect! I can now build the indexer from this data!\n');
+        } else {
+            console.log('❌ Transaction not found');
+        }
+    } catch (error) {
+        console.error('❌ Error:', error.message);
+    }
+}
+
+// Run the tests
+testConnection().then(() => {
+    // Check if transaction signature was provided
+    const signature = process.argv[2];
+    if (signature) {
+        analyzeTransaction(signature);
+    } else {
+        console.log('💡 To analyze a transaction, run:');
+        console.log('   node x1-test.js YOUR_TRANSACTION_SIGNATURE\n');
+    }
+});
