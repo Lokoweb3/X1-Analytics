@@ -1,0 +1,74 @@
+​
+Netlify Build                                                 
+────────────────────────────────────────────────────────────────
+​
+❯ Version
+  @netlify/build 35.5.9
+​
+❯ Flags
+  accountId: 63e1192df4c25605eb201278
+  dry: false
+​
+❯ Current directory
+  /mnt/c/Users/lokot/X1-Analytics
+​
+❯ Config file
+  No config file was defined: using default values.
+​
+❯ Context
+  production
+​
+❯ Using Next.js Runtime - v5.15.4
+​
+Build command from Netlify app                                
+────────────────────────────────────────────────────────────────
+​
+$ npm run build
+
+> x1-analytics@1.0.0 build
+> next build
+
+   ▲ Next.js 14.1.0
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/4) ...
+   Generating static pages (1/4) 
+   Generating static pages (2/4) 
+   Generating static pages (3/4) 
+ ✓ Generating static pages (4/4) 
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                              Size     First Load JS
+┌ ○ /                                    141 B          84.3 kB
+├ ○ /_not-found                          882 B            85 kB
+└ λ /api/indexer                         0 B                0 B
++ First Load JS shared by all            84.1 kB
+  ├ chunks/69-1b6d135f94ac0e36.js        28.9 kB
+  ├ chunks/fd9d1056-cc48c28d170fddc2.js  53.4 kB
+  └ other shared chunks (total)          1.84 kB
+
+
+○  (Static)   prerendered as static content
+λ  (Dynamic)  server-rendered on demand using Node.js
+
+​
+(build.command completed in 43.8s)
+​
+Functions bundling                                            
+────────────────────────────────────────────────────────────────
+​
+Packaging Functions from .netlify/functions-internal directory:
+ - ___netlify-server-handler/___netlify-server-handler.mjs
+​
+​
+(Functions bundling completed in 6.6s)
+​
+Netlify Build Complete                                        
+────────────────────────────────────────────────────────────────
+​
+(Netlify Build completed in 1m 20.4s)
