@@ -1,6 +1,6 @@
 // app/api/indexer/route.js
 // X1 XDEX Indexer — safe, chunked, idempotent
-// UPDATED: Added swap validation to prevent corrupted data
+// Runs via Vercel Cron or manual curl
 
 import { Connection } from '@solana/web3.js';
 import { batchProcessSlots } from '../../../lib/xdex-parser.js';
@@ -77,45 +77,15 @@ export async function GET(request) {
     /* ---------- parse swaps ---------- */
 
     const swaps = await batchProcessSlots(connection, startSlot, endSlot);
-    console.log(`💱 Found ${swaps.length} raw swaps`);
-
-    /* ---------- VALIDATION: filter invalid swaps ---------- */
-
-    const validSwaps = swaps.filter(s => {
-      // Check 1: Ensure in/out tokens are different
-      if (s.tokenInMint === s.tokenOutMint) {
-        console.warn(`⚠️  Invalid swap (same token): ${s.signature?.slice(0, 8)}...`);
-        return false;
-      }
-      
-      // Check 2: Ensure both tokens exist
-      if (!s.tokenInMint || !s.tokenOutMint) {
-        console.warn(`⚠️  Invalid swap (missing token): ${s.signature?.slice(0, 8)}...`);
-        return false;
-      }
-      
-      // Check 3: Ensure amounts exist
-      if (!s.amountIn || !s.amountOut) {
-        console.warn(`⚠️  Invalid swap (missing amounts): ${s.signature?.slice(0, 8)}...`);
-        return false;
-      }
-
-      return true;
-    });
-
-    const invalidCount = swaps.length - validSwaps.length;
-    if (invalidCount > 0) {
-      console.log(`🚫 Filtered ${invalidCount} invalid swaps`);
-    }
-    console.log(`✅ Valid swaps: ${validSwaps.length}`);
+    console.log(`💱 Found ${swaps.length} swaps`);
 
     /* ---------- store swaps ---------- */
 
-    if (validSwaps.length) {
+    if (swaps.length) {
       const { error } = await supabase
         .from('swaps')
         .upsert(
-          validSwaps.map(s => ({
+          swaps.map(s => ({
             signature: s.signature,
             slot: s.slot,
             block_time: s.blockTime
@@ -142,7 +112,7 @@ export async function GET(request) {
       id: 1,
       last_processed_slot: endSlot,
       last_run: new Date().toISOString(),
-      total_swaps: validSwaps.length,
+      total_swaps: swaps.length,
     });
 
     const duration = Date.now() - startedAt;
@@ -151,8 +121,6 @@ export async function GET(request) {
       success: true,
       slotsProcessed: endSlot - startSlot + 1,
       swapsFound: swaps.length,
-      validSwaps: validSwaps.length,
-      invalidSwaps: invalidCount,
       startSlot,
       endSlot,
       currentSlot,
