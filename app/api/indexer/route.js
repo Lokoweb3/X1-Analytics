@@ -18,7 +18,7 @@ const DEFAULT_MAX_SLOTS = Number(process.env.INDEXER_MAX_SLOTS || 200);
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 const connection = new Connection('https://rpc.mainnet.x1.xyz', {
