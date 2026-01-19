@@ -11,9 +11,9 @@ const TIMEFRAMES: Record<
   TfKey,
   { label: string; refreshMs: number; limit: number }
 > = {
-  "1m": { label: "1m", refreshMs: 30_000, limit: 500 },
-  "5m": { label: "5m", refreshMs: 45_000, limit: 500 },
-  "1h": { label: "1h", refreshMs: 60_000, limit: 500 },
+  "1m": { label: "1m", refreshMs: 30_000, limit: 100 },
+  "5m": { label: "5m", refreshMs: 45_000, limit: 100 },
+  "1h": { label: "1h", refreshMs: 60_000, limit: 50 },
 };
 
 type CandleRow = {
@@ -27,7 +27,7 @@ type CandleRow = {
 
 export default function Page() {
   const [pool, setPool] = useState(POOL_DEFAULT);
-  const [tf, setTf] = useState<TfKey>("5m");
+  const [tf, setTf] = useState<TfKey>("1h");
   const [status, setStatus] = useState<string>("idle");
 
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
@@ -41,53 +41,106 @@ export default function Page() {
   }
 
   async function loadCandles(signal?: AbortSignal) {
+    if (!pool || pool.trim() === "") {
+      setStatus("no pool address");
+      return;
+    }
+
     setStatus("loading...");
     const qs = new URLSearchParams({
-      pool,
+      pool: pool.trim(),
       tf,
       limit: String(cfg.limit),
     });
 
-    const res = await fetch(`/api/candles?${qs.toString()}`, {
-      method: "GET",
-      cache: "no-store",
-      signal,
-    });
+    try {
+      const res = await fetch(`/api/candles?${qs.toString()}`, {
+        method: "GET",
+        cache: "no-store",
+        signal,
+      });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`candles ${res.status}: ${text.slice(0, 300)}`);
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`);
+      }
+
+      const rows = (await res.json()) as CandleRow[];
+
+      if (!rows || rows.length === 0) {
+        setStatus("no data");
+        candleSeriesRef.current?.setData([]);
+        return;
+      }
+
+      const data = rows
+        .map((r) => ({
+          time: toUnixSeconds(r.time_bucket),
+          open: Number(r.open_price),
+          high: Number(r.high_price),
+          low: Number(r.low_price),
+          close: Number(r.close_price),
+        }))
+        .sort((a, b) => Number(a.time) - Number(b.time));
+
+      candleSeriesRef.current?.setData(data);
+      
+      // Auto-fit content after setting data
+      setTimeout(() => {
+        if (chartRef.current) {
+          chartRef.current.timeScale().fitContent();
+        }
+      }, 100);
+
+      setStatus(`✓ ${data.length} candles`);
+    } catch (e: any) {
+      if (e.name === "AbortError") return;
+      console.error("Load error:", e);
+      setStatus(`error: ${e.message}`);
     }
-
-    const rows = (await res.json()) as CandleRow[];
-
-    const data = rows
-      .map((r) => ({
-        time: toUnixSeconds(r.time_bucket),
-        open: Number(r.open_price),
-        high: Number(r.high_price),
-        low: Number(r.low_price),
-        close: Number(r.close_price),
-      }))
-      .sort((a, b) => Number(a.time) - Number(b.time));
-
-    candleSeriesRef.current?.setData(data);
-    setStatus(`ok (${data.length} candles)`);
   }
 
-  // init chart once
+  // Initialize chart
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
     const chart = createChart(chartContainerRef.current, {
       autoSize: true,
-      layout: { background: { color: "#0b0f1a" }, textColor: "#cbd5e1" },
+      layout: { 
+        background: { color: "#0b0f1a" }, 
+        textColor: "#cbd5e1" 
+      },
       grid: {
         vertLines: { color: "rgba(148,163,184,0.12)" },
         horzLines: { color: "rgba(148,163,184,0.12)" },
       },
-      timeScale: { timeVisible: true, secondsVisible: false },
-      rightPriceScale: { borderVisible: false },
+      timeScale: { 
+        timeVisible: true, 
+        secondsVisible: false,
+        borderColor: "rgba(148,163,184,0.2)",
+        barSpacing: 15,
+        minBarSpacing: 10,
+      },
+      rightPriceScale: { 
+        borderVisible: false,
+        scaleMargins: {
+          top: 0.2,
+          bottom: 0.2,
+        },
+      },
+      crosshair: {
+        mode: 1,
+        vertLine: {
+          width: 1,
+          color: "rgba(148,163,184,0.3)",
+          style: 2,
+        },
+        horzLine: {
+          width: 1,
+          color: "rgba(148,163,184,0.3)",
+          style: 2,
+        },
+      },
     });
 
     const series = chart.addCandlestickSeries({
@@ -96,12 +149,19 @@ export default function Page() {
       wickUpColor: "#22c55e",
       wickDownColor: "#ef4444",
       borderVisible: false,
+      priceFormat: {
+        type: 'price',
+        precision: 4,
+        minMove: 0.0001,
+      },
     });
 
     chartRef.current = chart;
     candleSeriesRef.current = series;
 
-    const ro = new ResizeObserver(() => chart.applyOptions({ autoSize: true }));
+    const ro = new ResizeObserver(() => {
+      chart.applyOptions({ autoSize: true });
+    });
     ro.observe(chartContainerRef.current);
 
     return () => {
@@ -112,19 +172,26 @@ export default function Page() {
     };
   }, []);
 
-  // load on pool/tf change
+  // Load on pool/tf change
   useEffect(() => {
     const ac = new AbortController();
-    loadCandles(ac.signal).catch((e) => setStatus(`error: ${String(e.message || e)}`));
+    loadCandles(ac.signal).catch((e) => {
+      if (e.name !== "AbortError") {
+        setStatus(`error: ${e.message}`);
+      }
+    });
     return () => ac.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pool, tf]);
 
-  // polling
+  // Polling
   useEffect(() => {
     const ac = new AbortController();
     const id = setInterval(() => {
-      loadCandles(ac.signal).catch((e) => setStatus(`error: ${String(e.message || e)}`));
+      loadCandles(ac.signal).catch((e) => {
+        if (e.name !== "AbortError") {
+          setStatus(`error: ${e.message}`);
+        }
+      });
     }, cfg.refreshMs);
 
     return () => {
@@ -144,30 +211,35 @@ export default function Page() {
           'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial',
       }}
     >
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 22, marginBottom: 8 }}>X1 Analytics – Candles</h1>
+      <div style={{ maxWidth: 1400, margin: "0 auto" }}>
+        <h1 style={{ fontSize: 24, marginBottom: 16, fontWeight: 600 }}>
+          X1 Analytics — Candles
+        </h1>
 
         <div
           style={{
             display: "flex",
-            gap: 10,
+            gap: 12,
             flexWrap: "wrap",
             alignItems: "center",
-            marginBottom: 12,
+            marginBottom: 16,
           }}
         >
-          <label style={{ fontSize: 12, opacity: 0.9 }}>Pool</label>
+          <label style={{ fontSize: 13, opacity: 0.9 }}>Pool</label>
           <input
             value={pool}
             onChange={(e) => setPool(e.target.value.trim())}
+            placeholder="Enter pool address..."
             style={{
               width: 520,
               maxWidth: "100%",
-              padding: "8px 10px",
+              padding: "10px 12px",
               background: "#0b1220",
               border: "1px solid rgba(148,163,184,0.18)",
               borderRadius: 10,
               color: "#e2e8f0",
+              fontFamily: "monospace",
+              fontSize: 13,
             }}
           />
 
@@ -180,12 +252,16 @@ export default function Page() {
                   key={key}
                   onClick={() => setTf(key)}
                   style={{
-                    padding: "8px 10px",
+                    padding: "10px 16px",
                     borderRadius: 10,
-                    border: "1px solid rgba(148,163,184,0.18)",
-                    background: active ? "#1f2937" : "#0b1220",
-                    color: "#e2e8f0",
+                    border: active 
+                      ? "1px solid rgba(34,197,94,0.5)" 
+                      : "1px solid rgba(148,163,184,0.18)",
+                    background: active ? "rgba(34,197,94,0.15)" : "#0b1220",
+                    color: active ? "#22c55e" : "#e2e8f0",
                     cursor: "pointer",
+                    fontSize: 14,
+                    fontWeight: 600,
                   }}
                 >
                   {TIMEFRAMES[key].label}
@@ -194,7 +270,7 @@ export default function Page() {
             })}
           </div>
 
-          <div style={{ fontSize: 12, opacity: 0.85 }}>
+          <div style={{ fontSize: 13, opacity: 0.85 }}>
             Status: <span style={{ fontFamily: "monospace" }}>{status}</span>
           </div>
         </div>
@@ -203,13 +279,23 @@ export default function Page() {
           ref={chartContainerRef}
           style={{
             width: "100%",
-            height: 560,
+            height: 650,
             borderRadius: 16,
             border: "1px solid rgba(148,163,184,0.15)",
             overflow: "hidden",
             background: "#0b0f1a",
+            boxShadow: "0 4px 6px -1px rgba(0,0,0,0.3)",
           }}
         />
+
+        <div style={{ 
+          marginTop: 16, 
+          fontSize: 12, 
+          opacity: 0.6,
+          textAlign: "center" 
+        }}>
+          💡 Tip: Scroll to zoom • Drag to pan • Click buttons to change timeframe
+        </div>
       </div>
     </div>
   );
