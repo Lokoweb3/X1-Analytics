@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 /* -------------------- CONFIG -------------------- */
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs'
 export const maxDuration = 60; // Vercel hard limit
 
 const DEFAULT_MAX_SLOTS = Number(process.env.INDEXER_MAX_SLOTS || 200);
