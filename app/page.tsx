@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createChart, ISeriesApi, UTCTimestamp } from "lightweight-charts";
 
-const POOL_DEFAULT = "wdLWfF28MtU6Tns7nix5xnfGPZufFKoME4FpFyaf3VW";
+const POOL_DEFAULT = "VmZfZnHzFTKSf19ZvAxa4duzChve3JYHVCPq1FvezhN";
 
 type TfKey = "1m" | "5m" | "1h";
 
